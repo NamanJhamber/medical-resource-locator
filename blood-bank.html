@@ -7,15 +7,30 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-top: 20px;
+        }
         #map {
             height: 500px;
             width: 100%;
             margin-bottom: 20px;
+            border-radius: 10px;
         }
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
         th, td {
             border: 1px solid #ddd;
@@ -23,13 +38,36 @@
             text-align: left;
         }
         th {
-            background-color: #f4f4f4;
+            background-color: #34495e;
+            color: white;
+        }
+        tr:hover {
+            background-color: #ecf0f1;
+        }
+        td a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        td a:hover {
+            text-decoration: underline;
+        }
+        .alert {
+            background-color: #e74c3c;
+            color: white;
+            padding: 10px;
+            margin: 20px;
+            border-radius: 5px;
+            text-align: center;
+            display: none;
         }
     </style>
 </head>
 <body>
     <h1>Find Nearby Blood Banks</h1>
+    
     <div id="map"></div>
+    <div id="error" class="alert"></div>
+    
     <h2>List of Nearby Blood Banks</h2>
     <table id="bloodBankTable">
         <thead>
@@ -42,8 +80,9 @@
             <!-- Dynamic blood bank data will be inserted here -->
         </tbody>
     </table>
+
     <script>
-        // Initialize the map
+        // Initialize the map with a fallback center
         const map = L.map('map').setView([51.505, -0.09], 13); // Default coordinates (London)
 
         // Add OpenStreetMap tiles
@@ -56,7 +95,7 @@
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition((position) => {
                 const userCoords = [position.coords.latitude, position.coords.longitude];
-                map.setView(userCoords, 14);
+                map.setView(userCoords, 14);  // Center the map on the user's location
 
                 // Add marker for user's location
                 L.marker(userCoords).addTo(map).bindPopup("You are here").openPopup();
@@ -64,17 +103,16 @@
                 // Fetch nearby blood banks using Overpass API
                 fetchNearbyBloodBanks(userCoords);
             }, () => {
-                alert("Unable to retrieve your location.");
+                showError("Unable to retrieve your location. Please enable location services.");
             });
         } else {
-            alert("Geolocation is not supported by your browser.");
+            showError("Geolocation is not supported by your browser.");
         }
 
         // Function to fetch nearby blood banks from Overpass API
         function fetchNearbyBloodBanks(coords) {
             const [lat, lon] = coords;
-            // Overpass query to search for blood banks (filtering for "blood_bank" or related tags)
-            const overpassUrl = `https://overpass-api.de/api/interpreter?data=[out:json];node[amenity=blood_bank](around:5000,${lat},${lon});out`;
+            const overpassUrl = `https://overpass-api.de/api/interpreter?data=[out:json];node[amenity=blood_bank](around:5000,${lat},${lon});out;`;
 
             fetch(overpassUrl)
                 .then(response => response.json())
@@ -82,40 +120,51 @@
                     const tableBody = document.querySelector("#bloodBankTable tbody");
                     tableBody.innerHTML = ""; // Clear any existing rows
 
-                    data.elements.forEach(bloodBank => {
-                        if (bloodBank.lat && bloodBank.lon) {
-                            // Add marker for each blood bank
-                            L.marker([bloodBank.lat, bloodBank.lon]).addTo(map)
-                                .bindPopup(bloodBank.tags.name || "Blood Bank");
+                    if (data.elements.length === 0) {
+                        showError("No nearby blood banks found.");
+                    } else {
+                        data.elements.forEach(bloodBank => {
+                            if (bloodBank.lat && bloodBank.lon) {
+                                // Add marker for each blood bank
+                                L.marker([bloodBank.lat, bloodBank.lon]).addTo(map)
+                                    .bindPopup(bloodBank.tags.name || "Blood Bank");
 
-                            // Create Google Maps link
-                            const googleMapsLink = `https://www.google.com/maps?q=${bloodBank.lat},${bloodBank.lon}`;
+                                // Create Google Maps link
+                                const googleMapsLink = `https://www.google.com/maps?q=${bloodBank.lat},${bloodBank.lon}`;
 
-                            // Add row to the table
-                            const row = document.createElement("tr");
-                            const nameCell = document.createElement("td");
-                            const mapsCell = document.createElement("td");
+                                // Add row to the table
+                                const row = document.createElement("tr");
+                                const nameCell = document.createElement("td");
+                                const mapsCell = document.createElement("td");
 
-                            nameCell.textContent = bloodBank.tags.name || "Unnamed Blood Bank";
+                                nameCell.textContent = bloodBank.tags.name || "Unnamed Blood Bank";
 
-                            // Create a clickable Google Maps link
-                            const link = document.createElement("a");
-                            link.href = googleMapsLink;
-                            link.target = "_blank";
-                            link.textContent = "View on Google Maps";
-                            
-                            mapsCell.appendChild(link);
-                            row.appendChild(nameCell);
-                            row.appendChild(mapsCell);
+                                // Create a clickable Google Maps link
+                                const link = document.createElement("a");
+                                link.href = googleMapsLink;
+                                link.target = "_blank";
+                                link.textContent = "View on Google Maps";
+                                
+                                mapsCell.appendChild(link);
+                                row.appendChild(nameCell);
+                                row.appendChild(mapsCell);
 
-                            tableBody.appendChild(row);
-                        }
-                    });
+                                tableBody.appendChild(row);
+                            }
+                        });
+                    }
                 })
                 .catch(err => {
                     console.error("Error fetching blood bank data:", err);
-                    alert("An error occurred while fetching blood bank data.");
+                    showError("An error occurred while fetching blood bank data.");
                 });
+        }
+
+        // Function to display error message
+        function showError(message) {
+            const errorElement = document.getElementById("error");
+            errorElement.textContent = message;
+            errorElement.style.display = "block";
         }
     </script>
 </body>
